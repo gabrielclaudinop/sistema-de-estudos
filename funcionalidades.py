@@ -82,11 +82,7 @@ def adicionar_novos_cards(arquivo_com_novos_cards: str | None = None) -> None:
             'id': str(id_ultimo_card),
             'frente': novo_card['frente'],
             'verso': novo_card['verso'],
-            'assunto': novo_card.get('assunto', '@sem assunto/'),
-            'estado': 'Novo',
-            'estabilidade': '0',
-            'dificuldade': '0',
-            'data_proxima_revisao': ''
+            'assunto': novo_card.get('assunto', '@sem assunto/')
         }
         
         cards.append(card)
