@@ -1,5 +1,8 @@
-from utilitarios import ler_csv, escrever_csv, ler_parametros_csv, escrever_parametros_csv, chavear_dicionarios, obter_cards_por_assunto
+from utilitarios import ler_csv, escrever_csv, ler_parametros_csv, escrever_parametros_csv, chavear_dicionarios, obter_cards_por_assunto, anexar_linha_csv
 from configuracoes import ARQ_ASSUNTOS, ARQ_CARDS, DIR_NOVOS_CARDS, CAMINHO_DIRETORIO_CSV, INFORMACOES_ARQUIVOS_CSV
+from datetime import datetime, timezone, timedelta
+from collections import deque
+from fsrs import Scheduler, Card, Rating
 from pathlib import Path
 import csv
 
@@ -50,9 +53,6 @@ def atualizar_assuntos(cards: list[dict]) -> None:
 def adicionar_novos_cards(arquivo_com_novos_cards: str | None = None) -> None:
     """
     Lê um arquivo CSV contendo novos flashcards e os integra ao banco de dados principal.
-    
-    Inicializa os cards com os parâmetros exigidos pela API 6.x do FSRS (estabilidade, 
-    dificuldade e estado) para que estejam prontos para o algoritmo de repetição.
 
     Args:
         arquivo_com_novos_cards (str | None): O nome do arquivo a ser importado.
@@ -94,3 +94,117 @@ def adicionar_novos_cards(arquivo_com_novos_cards: str | None = None) -> None:
     atualizar_assuntos(lista_novos_cards)
     escrever_csv(ARQ_CARDS, cards)
     print(f"{len(lista_novos_cards)} cards processados e adicionados com sucesso.")
+
+def estudar_assuntos() -> None:
+    """
+    Inicia uma sessão de estudos. Permite ao utilizador indicar um prefixo de assunto
+    e reconstrói o estado dos cards através do histórico para agendar e ordenar os estudos.
+    """
+    assunto_prefixo = input('Digite o assunto que deseja estudar (ex: "Ensino Fundamental/Matemática/"): ')
+
+    if assunto_prefixo[-1] != '/':
+        print("O nome do assunto deve terminar com /")
+        return
+
+    try:
+        max_novos = int(input('Quantidade máxima de assuntos novos a estudar hoje: '))
+    except ValueError:
+        print("Valor inválido. Considerando 0 cards novos.")
+        max_novos = 0
+
+    todos_cards = ler_csv(ARQ_CARDS)
+    cards_filtrados = [c for c in todos_cards if c['assunto'].startswith(assunto_prefixo)]
+
+    if not cards_filtrados:
+        print("Nenhum card encontrado com este prefixo de assunto.")
+        return
+
+    caminho_historico = Path(CAMINHO_DIRETORIO_CSV) / 'historico_revisoes.csv'
+    historico_completo = ler_csv(str(caminho_historico)) if caminho_historico.exists() else []
+    
+    hist_por_card = {}
+    for log in historico_completo:
+        id_c = log['id_card']
+        if id_c not in hist_por_card:
+            hist_por_card[id_c] = []
+        hist_por_card[id_c].append(log)
+
+    scheduler = Scheduler()
+    agora = datetime.now(timezone.utc)
+    cards_revisao = []
+    cards_novos = []
+
+    print("\nCalculando estados e retenção a partir do histórico...")
+    for c in cards_filtrados:
+        card_fsrs = Card()
+        logs = hist_por_card.get(c['id'], [])
+        
+        for log in logs:
+            data_log = datetime.fromisoformat(log['data'])
+            dificuldade = Rating(int(log['dificuldade']))
+            card_fsrs, _ = scheduler.review_card(card_fsrs, dificuldade, data_log)
+
+        item = {'dados': c, 'fsrs': card_fsrs}
+
+        if not logs:
+            cards_novos.append(item)
+        else:
+            if card_fsrs.due <= agora or c['id'] == '20':
+                item['retencao'] = scheduler.get_card_retrievability(card_fsrs, agora)
+                cards_revisao.append(item)
+
+    cards_revisao.sort(key=lambda x: x['retencao'])
+    cards_novos = cards_novos[:max_novos]
+
+    fila = deque(cards_revisao + cards_novos)
+    
+    if not fila:
+        print("Não tem cards pendentes para esse assunto hoje.")
+        return
+
+    print(f"\nIniciando: {len(cards_revisao)} a revisar, {len(cards_novos)} novos.\n")
+
+    maior_id_hist = max([int(log['id']) for log in historico_completo]) if historico_completo else 0
+
+    while fila:
+        item = fila.popleft()
+        card_csv = item['dados']
+        card_fsrs = item['fsrs']
+
+        print("-" * 45)
+        print(f"Assunto: {card_csv['assunto']}")
+        print(f"Frente:  {card_csv['frente']}")
+        input("Pressione ENTER para revelar o verso...")
+        print(f"Verso:   {card_csv['verso']}")
+        
+        while True:
+            resp = input("Indique a dificuldade (1-Errei, 2-Difícil, 3-Bom, 4-Fácil): ").strip()
+            if resp in ['1', '2', '3', '4']:
+                break
+            print("Opção inválida. Digite de 1 a 4.")
+        
+        rating = Rating(int(resp))
+        agora_resp = datetime.now(timezone.utc)
+        
+        print()
+        print(card_fsrs.due, scheduler.get_card_retrievability(card_fsrs, agora_resp + timedelta(days=1)))
+        novo_card_fsrs, _ = scheduler.review_card(card_fsrs, rating, agora_resp)
+        print(novo_card_fsrs.due, scheduler.get_card_retrievability(novo_card_fsrs, agora_resp + timedelta(days=1)))
+        print()
+        
+        maior_id_hist += 1
+        novo_log = {
+            'id': str(maior_id_hist),
+            'id_card': card_csv['id'],
+            'dificuldade': resp,
+            'data': agora_resp.isoformat()
+        }
+        
+        anexar_linha_csv(str(caminho_historico), novo_log)
+        
+        item['fsrs'] = novo_card_fsrs
+        if novo_card_fsrs.due - agora_resp < timedelta(hours=12):
+            fila.append(item)
+            print("[✓ O card voltará ao fim da fila para ser consolidado ainda hoje]")
+
+    print("\nSessão de estudos concluída!")

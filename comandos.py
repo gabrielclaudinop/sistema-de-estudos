@@ -1,7 +1,8 @@
-from funcionalidades import adicionar_novos_cards, recriar_arquivos_csv
+from funcionalidades import adicionar_novos_cards, recriar_arquivos_csv, estudar_assuntos
 
 mapa_comandos = {
     '1': ('Adicionar novos cards', adicionar_novos_cards),
+    '2': ('Estudar assuntos', estudar_assuntos),
     '100': ('Recriar arquivos csv', recriar_arquivos_csv)
 }
 

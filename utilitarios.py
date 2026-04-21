@@ -2,6 +2,7 @@ from configuracoes import ARQ_PARAMETROS, ARQ_CARDS, CAMINHO_DIRETORIO_CSV, INFO
 from pathlib import Path
 import csv
 import copy
+import os
 
 def configurar_arquivos_csv() -> None:
     """
@@ -117,3 +118,16 @@ def obter_cards_por_assunto(assunto_desejado: str) -> list[dict]:
     """
     todos_cards = ler_csv(ARQ_CARDS)
     return [card for card in todos_cards if card['assunto'] == assunto_desejado]
+
+def anexar_linha_csv(caminho_arquivo: str, linha_conteudo: dict) -> None:
+    """
+    Anexa uma única linha a um arquivo CSV existente. Útil para o histórico de revisões.
+    """
+    lista_colunas = list(linha_conteudo.keys())
+    arquivo_existe = Path(caminho_arquivo).exists()
+    
+    with open(caminho_arquivo, 'a', encoding='utf-8', newline='') as arquivo:
+        escritor = csv.DictWriter(arquivo, fieldnames=lista_colunas, quoting=csv.QUOTE_ALL)
+        if not arquivo_existe or os.path.getsize(caminho_arquivo) == 0:
+            escritor.writeheader()
+        escritor.writerow(linha_conteudo)
