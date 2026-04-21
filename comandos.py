@@ -1,44 +1,35 @@
 from funcionalidades import adicionar_novos_cards, estudar_assunto, recriar_arquivos_csv
 
-lista_comandos = [
-    {
-        'id': '0',
-        'titulo': 'Sair',
-        'funcao': None
-    },
-    {
-        'id': '1',
-        'titulo': 'Adicionar novos cards',
-        'funcao': lambda: adicionar_novos_cards()
-    },
-    {
-        'id': '2',
-        'titulo': 'Estudar assunto',
-        'funcao': lambda: estudar_assunto()
-    },
-    {
-        'id': '100',
-        'titulo': 'Recriar arquivos csv',
-        'funcao': lambda: recriar_arquivos_csv()
-    }
-]
+mapa_comandos = {
+    '1': ('Adicionar novos cards', adicionar_novos_cards),
+    '2': ('Estudar assunto', estudar_assunto),
+    '100': ('Recriar arquivos csv', recriar_arquivos_csv)
+}
 
 def exibir_menu() -> None:
-    print('==== MENU ====')
-    for comando in lista_comandos:
-        print(f'{comando['id']} - {comando['titulo']}')
+    """
+    Itera sobre o mapa de comandos e exibe as opções disponíveis formatadas no terminal.
+    """
+    print('\n==== MENU ====')
+    print('0 - Sair')
+    
+    for id_cmd, (titulo, _) in mapa_comandos.items():
+        print(f'{id_cmd} - {titulo}')
 
-def executar_comando(id: str) -> None:
-    comando_encontrado = False
-    for comando in lista_comandos:
-        if comando['id'] == id:
-            comando_encontrado = True
-            break
+def executar_comando(id_cmd: str) -> None:
+    """
+    Recebe o ID do comando digitado pelo usuário, busca a função associada 
+    no dicionário `mapa_comandos` e a invoca.
 
-    if not comando_encontrado:
-        print(f'O número de comando não é válido: {id}')
+    Args:
+        id_cmd (str): O número do comando digitado.
+    """
+    comando = mapa_comandos.get(id_cmd)
+    
+    if not comando:
+        print(f'O número de comando não é válido: {id_cmd}')
         return
     
-    print(f'-----------------\nExecutando: {comando['titulo']}\n')
-    funcao = comando['funcao']
+    titulo, funcao = comando
+    print(f'\n-----------------\nExecutando: {titulo}\n')
     funcao()

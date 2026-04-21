@@ -1,12 +1,14 @@
-from utilitarios import ler_csv, escrever_csv, ler_parametros_csv, escrever_parametros_csv, chavear_dicionarios
+from utilitarios import ler_csv, escrever_csv, ler_parametros_csv, escrever_parametros_csv, chavear_dicionarios, obter_cards_por_assunto
 from configuracoes import ARQ_ASSUNTOS, ARQ_CARDS, DIR_NOVOS_CARDS, CAMINHO_DIRETORIO_CSV, INFORMACOES_ARQUIVOS_CSV
 from pathlib import Path
 import csv
-import ast
 
-def recriar_arquivos_csv():
+def recriar_arquivos_csv() -> None:
+    """
+    Função de manutenção para formatar e recriar os arquivos CSV, apagando seus dados.
+    O usuário pode digitar 'TODOS' ou listar arquivos específicos separados por espaço.
+    """
     caminho = Path(CAMINHO_DIRETORIO_CSV)
-
     arquivos_recriar = input('Quais arquivos você deseja recriar? (Sintaxe: TODOS | arq1.csv arq2.csv ...)\n').split()
 
     for nome_arquivo, informacoes in INFORMACOES_ARQUIVOS_CSV.items():
@@ -17,68 +19,101 @@ def recriar_arquivos_csv():
                 escritor = csv.writer(arquivo_csv, quoting=csv.QUOTE_ALL)
                 escritor.writerow(informacoes["colunas"])
                 escritor.writerows(informacoes["linhas"])
+    print("\nArquivos recriados de acordo com a seleção.")
 
 def atualizar_assuntos(cards: list[dict]) -> None:
+    """
+    Verifica a lista de novos cards e adiciona os nomes de assuntos inéditos
+    à tabela de 'assuntos.csv'.
+
+    Args:
+        cards (list[dict]): A lista de novos cards recém-processados.
+    """
     lista_assuntos = ler_csv(ARQ_ASSUNTOS)
     dict_parametros = ler_parametros_csv()
-    id_ultimo_assunto = int(dict_parametros['id_ultimo_assunto'])
-
-    for i in range(len(lista_assuntos)):
-        lista_assuntos[i]['cards'] = ast.literal_eval(lista_assuntos[i]['cards'])
-
+    
+    id_ultimo_assunto = int(dict_parametros.get('id_ultimo_assunto', 0))
     dict_assuntos = chavear_dicionarios(lista_assuntos, 'titulo')
-    print(dict_assuntos)
 
     for card in cards:
         assunto = card['assunto']
-        id_card = card['id']
         if assunto not in dict_assuntos:
             id_ultimo_assunto += 1
-            dict_assuntos[assunto] = {'id': id_ultimo_assunto, 'titulo': assunto, 'cards': [id_card]}
-        else:
-            dict_assuntos[assunto]['cards'].append(id_card)
-    print(dict_assuntos)
-        
-    assuntos = []
-    for assunto in dict_assuntos.values():
-        assuntos.append(assunto)
-    assuntos.sort(key=lambda d:d['titulo'])
+            dict_assuntos[assunto] = {'id': str(id_ultimo_assunto), 'titulo': assunto}
+            
+    assuntos = sorted(dict_assuntos.values(), key=lambda d: d['titulo'])
     
-    dict_parametros['id_ultimo_assunto'] = id_ultimo_assunto
+    dict_parametros['id_ultimo_assunto'] = str(id_ultimo_assunto)
     escrever_parametros_csv(dict_parametros)
-
     escrever_csv(ARQ_ASSUNTOS, assuntos)
 
-def adicionar_novos_cards(arquivo_com_novos_cards: str|None = None) -> None:
-    if not arquivo_com_novos_cards:
-        arquivo_com_novos_cards = input(f'Digite o nome do arquivo com os novos cards (deve estar no diretório {DIR_NOVOS_CARDS}): ')
+def adicionar_novos_cards(arquivo_com_novos_cards: str | None = None) -> None:
+    """
+    Lê um arquivo CSV contendo novos flashcards e os integra ao banco de dados principal.
     
-    caminho_novos_cards = Path(f'{DIR_NOVOS_CARDS}{arquivo_com_novos_cards}')
+    Inicializa os cards com os parâmetros exigidos pela API 6.x do FSRS (estabilidade, 
+    dificuldade e estado) para que estejam prontos para o algoritmo de repetição.
+
+    Args:
+        arquivo_com_novos_cards (str | None): O nome do arquivo a ser importado.
+                                              Se None, solicita o nome via input.
+    """
+    if not arquivo_com_novos_cards:
+        arquivo_com_novos_cards = input(f'Digite o nome do arquivo com os novos cards (deve estar no diretório {DIR_NOVOS_CARDS}/): ')
+    
+    caminho_novos_cards = Path(DIR_NOVOS_CARDS) / arquivo_com_novos_cards
 
     if not caminho_novos_cards.exists():
-        print('Arquivo inexistente.')
+        print(f'Arquivo inexistente: {caminho_novos_cards}')
         return
 
     lista_cards = ler_csv(ARQ_CARDS)
-    lista_novos_cards = ler_csv(f'{DIR_NOVOS_CARDS}{arquivo_com_novos_cards}')
+    lista_novos_cards = ler_csv(str(caminho_novos_cards))
+    
     dict_parametros = ler_parametros_csv()
-    id_ultimo_card = int(dict_parametros['id_ultimo_card'])
+    id_ultimo_card = int(dict_parametros.get('id_ultimo_card', -1))
 
     cards = lista_cards.copy()
-    for i in range(len(lista_novos_cards)):
-        novo_card = lista_novos_cards[i]
+    
+    for i, novo_card in enumerate(lista_novos_cards):
         id_ultimo_card += 1
+        
         card = {
             'id': str(id_ultimo_card),
             'frente': novo_card['frente'],
             'verso': novo_card['verso'],
-            'assunto': novo_card['assunto'] if 'assunto' in novo_card else '@sem assunto'
+            'assunto': novo_card.get('assunto', '@sem assunto/'),
+            'estado': 'Novo',
+            'estabilidade': '0',
+            'dificuldade': '0',
+            'data_proxima_revisao': ''
         }
+        
         cards.append(card)
         lista_novos_cards[i] = card
 
-    dict_parametros['id_ultimo_card'] = id_ultimo_card
+    dict_parametros['id_ultimo_card'] = str(id_ultimo_card)
     escrever_parametros_csv(dict_parametros)
 
     atualizar_assuntos(lista_novos_cards)
     escrever_csv(ARQ_CARDS, cards)
+    print(f"{len(lista_novos_cards)} cards processados e adicionados com sucesso.")
+
+def estudar_assunto() -> None:
+    """
+    Inicia uma sessão interativa de estudos no terminal, solicitando o assunto
+    e exibindo sequencialmente a frente e o verso dos cards vinculados a ele.
+    """
+    assunto = input("Qual assunto você deseja estudar? ")
+    cards_para_estudar = obter_cards_por_assunto(assunto)
+    
+    if not cards_para_estudar:
+        print("Nenhum card encontrado para este assunto.")
+        return
+    
+    print(f"\nIniciando o estudo de '{assunto}' ({len(cards_para_estudar)} cards encontrados).")
+    
+    for card in cards_para_estudar:
+        print(f"\nFrente: {card['frente']}")
+        input("Pressione Enter para visualizar a resposta...")
+        print(f"Verso: {card['verso']}")
