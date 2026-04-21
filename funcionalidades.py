@@ -98,22 +98,3 @@ def adicionar_novos_cards(arquivo_com_novos_cards: str | None = None) -> None:
     atualizar_assuntos(lista_novos_cards)
     escrever_csv(ARQ_CARDS, cards)
     print(f"{len(lista_novos_cards)} cards processados e adicionados com sucesso.")
-
-def estudar_assunto() -> None:
-    """
-    Inicia uma sessão interativa de estudos no terminal, solicitando o assunto
-    e exibindo sequencialmente a frente e o verso dos cards vinculados a ele.
-    """
-    assunto = input("Qual assunto você deseja estudar? ")
-    cards_para_estudar = obter_cards_por_assunto(assunto)
-    
-    if not cards_para_estudar:
-        print("Nenhum card encontrado para este assunto.")
-        return
-    
-    print(f"\nIniciando o estudo de '{assunto}' ({len(cards_para_estudar)} cards encontrados).")
-    
-    for card in cards_para_estudar:
-        print(f"\nFrente: {card['frente']}")
-        input("Pressione Enter para visualizar a resposta...")
-        print(f"Verso: {card['verso']}")
