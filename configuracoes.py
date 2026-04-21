@@ -8,15 +8,15 @@ INFORMACOES_ARQUIVOS_CSV = {
     'assuntos.csv': {
         'colunas': ['id', 'titulo'],
         'linhas': [
-            ['0', '@sem assunto/']
+            ['0', '/@sem assunto/']
         ]
     },
     'cards.csv': {
-        'colunas': ['id', 'frente', 'verso', 'assunto', 'estado', 'estabilidade', 'dificuldade', 'data_proxima_revisao'],
+        'colunas': ['id', 'frente', 'verso', 'assunto'],
         'linhas': []
     },
     'historico_revisoes.csv': {
-        'colunas': ['id', 'id_card', 'dificuldade', 'data'],
+        'colunas': ['id', 'id_card', 'dificuldade', 'data', 'data_proxima_revisao'],
         'linhas': []
     },
     'logs.csv': {

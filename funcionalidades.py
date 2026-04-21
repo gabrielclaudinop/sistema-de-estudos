@@ -6,6 +6,8 @@ from fsrs import Scheduler, Card, Rating
 from pathlib import Path
 import csv
 
+scheduler = Scheduler()
+
 def recriar_arquivos_csv() -> None:
     """
     Função de manutenção para formatar e recriar os arquivos CSV, apagando seus dados.
@@ -95,47 +97,23 @@ def adicionar_novos_cards(arquivo_com_novos_cards: str | None = None) -> None:
     escrever_csv(ARQ_CARDS, cards)
     print(f"{len(lista_novos_cards)} cards processados e adicionados com sucesso.")
 
-def estudar_assuntos() -> None:
-    """
-    Inicia uma sessão de estudos. Permite ao utilizador indicar um prefixo de assunto
-    e reconstrói o estado dos cards através do histórico para agendar e ordenar os estudos.
-    """
-    assunto_prefixo = input('Digite o assunto que deseja estudar (ex: "Ensino Fundamental/Matemática/"): ')
-
-    if assunto_prefixo[-1] != '/':
-        print("O nome do assunto deve terminar com /")
-        return
-
-    try:
-        max_novos = int(input('Quantidade máxima de assuntos novos a estudar hoje: '))
-    except ValueError:
-        print("Valor inválido. Considerando 0 cards novos.")
-        max_novos = 0
-
+def filtrar_cards_por_assunto(assunto_prefixo):
     todos_cards = ler_csv(ARQ_CARDS)
-    cards_filtrados = [c for c in todos_cards if c['assunto'].startswith(assunto_prefixo)]
+    cards_filtrados = [c for c in todos_cards if c['assunto'].startswith(assunto_prefixo)]    
+    return cards_filtrados
 
-    if not cards_filtrados:
-        print("Nenhum card encontrado com este prefixo de assunto.")
-        return
-
-    caminho_historico = Path(CAMINHO_DIRETORIO_CSV) / 'historico_revisoes.csv'
-    historico_completo = ler_csv(str(caminho_historico)) if caminho_historico.exists() else []
-    
+def calcula_retencao_dos_cards(cards, historico, data):
     hist_por_card = {}
-    for log in historico_completo:
+    for log in historico:
         id_c = log['id_card']
         if id_c not in hist_por_card:
             hist_por_card[id_c] = []
         hist_por_card[id_c].append(log)
 
-    scheduler = Scheduler()
-    agora = datetime.now(timezone.utc)
-    cards_revisao = []
-    cards_novos = []
-
     print("\nCalculando estados e retenção a partir do histórico...")
-    for c in cards_filtrados:
+
+    cards_com_retencao = []
+    for c in cards:
         card_fsrs = Card()
         logs = hist_por_card.get(c['id'], [])
         
@@ -147,19 +125,59 @@ def estudar_assuntos() -> None:
         item = {'dados': c, 'fsrs': card_fsrs}
 
         if not logs:
-            cards_novos.append(item)
+            item['retencao'] = 0
         else:
-            if card_fsrs.due <= agora or c['id'] == '20':
-                item['retencao'] = scheduler.get_card_retrievability(card_fsrs, agora)
-                cards_revisao.append(item)
+            item['retencao'] = scheduler.get_card_retrievability(card_fsrs, data)
+        
+        cards_com_retencao.append(item)
+    
+    return cards_com_retencao
 
-    cards_revisao.sort(key=lambda x: x['retencao'])
+def estudar_assuntos() -> None:
+    """
+    Inicia uma sessão de estudos. Permite ao utilizador indicar um prefixo de assunto
+    e reconstrói o estado dos cards através do histórico para agendar e ordenar os estudos.
+    """
+    assunto_prefixo = input('Digite o assunto que deseja estudar (ex: "/Ensino Fundamental/Matemática/"): ')
+
+    if assunto_prefixo[-1] != '/':
+        print("O nome do assunto deve começar e terminar com /")
+        return
+
+    try:
+        max_novos = int(input('Quantidade máxima de assuntos novos a estudar hoje: '))
+    except ValueError:
+        print("Valor inválido. Considerando 0 cards novos.")
+        max_novos = 0
+    
+    cards_filtrados = filtrar_cards_por_assunto(assunto_prefixo)
+
+    if not cards_filtrados:
+        print("Nenhum card encontrado com este prefixo de assunto.")
+        return
+    
+    agora = datetime.now(timezone.utc)
+    caminho_historico = Path(CAMINHO_DIRETORIO_CSV) / 'historico_revisoes.csv'
+    historico_completo = ler_csv(str(caminho_historico)) if caminho_historico.exists() else []
+
+    cards_com_retencao = calcula_retencao_dos_cards(cards_filtrados, historico_completo, agora)
+
+    cards_revisao = []
+    cards_novos = []
+
+    for card in cards_com_retencao:
+        if card['retencao'] == 0:
+            cards_novos.append(card)
+        elif card['fsrs'].due <= agora:
+            cards_revisao.append(card)
+
+    cards_revisao.sort(key=lambda c: c['retencao'])
     cards_novos = cards_novos[:max_novos]
 
     fila = deque(cards_revisao + cards_novos)
     
     if not fila:
-        print("Não tem cards pendentes para esse assunto hoje.")
+        print("\nNão tem cards pendentes para esse assunto hoje.")
         return
 
     print(f"\nIniciando: {len(cards_revisao)} a revisar, {len(cards_novos)} novos.\n")
@@ -186,18 +204,15 @@ def estudar_assuntos() -> None:
         rating = Rating(int(resp))
         agora_resp = datetime.now(timezone.utc)
         
-        print()
-        print(card_fsrs.due, scheduler.get_card_retrievability(card_fsrs, agora_resp + timedelta(days=1)))
         novo_card_fsrs, _ = scheduler.review_card(card_fsrs, rating, agora_resp)
-        print(novo_card_fsrs.due, scheduler.get_card_retrievability(novo_card_fsrs, agora_resp + timedelta(days=1)))
-        print()
         
         maior_id_hist += 1
         novo_log = {
             'id': str(maior_id_hist),
             'id_card': card_csv['id'],
             'dificuldade': resp,
-            'data': agora_resp.isoformat()
+            'data': agora_resp.isoformat(),
+            'data_proxima_revisao': novo_card_fsrs.due.isoformat()
         }
         
         anexar_linha_csv(str(caminho_historico), novo_log)
